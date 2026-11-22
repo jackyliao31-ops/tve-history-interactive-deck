@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>課堂即時投票</title>
+<style>
+:root{--cream:#F7F3E9;--ink:#173237;--teal:#176D66;--mint:#E1EBE2;--sand:#EFE3D2;--rust:#A34F30;--grey:#40565A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif;padding:16px;max-width:560px;margin:auto}
+h1{font-size:20px;margin:6px 0 4px}p.sub{color:var(--grey);font-size:14px;margin:0 0 14px}
+nav{display:flex;gap:6px;margin-bottom:16px}nav button{flex:1;padding:10px 4px;border:2px solid var(--teal);background:transparent;color:var(--teal);font:inherit;font-size:14px;border-radius:4px}
+nav button.on{background:var(--teal);color:#fff}
+section{display:none}section.on{display:block}
+h2{font-size:18px;margin:0 0 10px}
+.opts{display:grid;gap:10px}.opts button{padding:16px;border:0;border-radius:4px;font:inherit;font-size:17px;text-align:left;background:var(--mint);color:var(--ink)}
+.opts button:nth-child(even){background:var(--sand)}.opts button.sel{outline:3px solid var(--rust)}
+.opts button small{display:block;color:var(--grey);font-size:13px}
+label{display:block;font-size:14px;color:var(--grey);margin:14px 0 6px}
+textarea{width:100%;min-height:96px;font:inherit;font-size:16px;padding:10px;border:1px solid #cfc7b5;border-radius:4px;background:#fff}
+.count{text-align:right;font-size:12px;color:var(--grey)}
+.go{width:100%;margin-top:14px;padding:14px;border:0;border-radius:4px;background:var(--teal);color:#fff;font:inherit;font-size:17px;font-weight:700}
+.go:disabled{opacity:.5}
+.msg{margin-top:12px;font-size:15px;color:var(--teal);min-height:1.4em}
+</style>
+</head>
+<body>
+<h1>戰後臺灣技職教育 1966–1987</h1>
+<p class="sub">選一項後送出，結果即時顯示在投影幕上。</p>
+<nav><button data-tab="open">開場投票</button><button data-tab="policy">1986 決策題</button></nav>
+
+<section id="t-open">
+  <h2>如果你是 1970 年代的國中畢業生，會選？</h2>
+  <div class="opts" data-g="open">
+    <button data-v="普通高中">普通高中<small>一般學科</small></button>
+    <button data-v="高職">高職<small>職業類科</small></button>
+    <button data-v="五專">五專<small>五年制專科</small></button>
+    <button data-v="就業">就業<small>進入職場</small></button>
+  </div>
+  <button class="go" data-send="open">送出</button>
+</section>
+
+<section id="t-policy">
+  <h2>1986 年，只能先推一項政策，你選哪一個？</h2>
+  <div class="opts" data-g="policy">
+    <button data-v="A">A　增加高中名額</button>
+    <button data-v="B">B　擴大技職升學</button>
+    <button data-v="C">C　改善高職與建教品質</button>
+  </div>
+  <label for="reason">一句理由（選填，會顯示在投影幕上，請勿寫姓名）</label>
+  <textarea id="reason" maxlength="60" placeholder="例如：私立高職學生最多，品質改善影響的人最多"></textarea>
+  <div class="count"><span id="cnt">0</span> / 60</div>
+  <button class="go" data-send="policy">送出</button>
+</section>
+
+<div class="msg" id="msg"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+const db = getFirestore(initializeApp({
+  apiKey: "AIzaSyBsckipoy9c8P64nK7Zc-pV0at7BUZ_7sw", authDomain: "changchih-class.firebaseapp.com",
+  projectId: "changchih-class", storageBucket: "changchih-class.firebasestorage.app",
+  messagingSenderId: "750042810845", appId: "1:750042810845:web:f4a9a07ae6923633728e34"
+}));
+const SLUG = 'tve1966', sel = {}, msg = document.getElementById('msg');
+function show(t) {
+  if (!['open', 'policy'].includes(t)) t = 'open';
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === 't-' + t));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  msg.textContent = '';
+}
+show(location.hash.slice(1));
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => { location.hash = b.dataset.tab; });
+const ta = document.getElementById('reason'), cnt = document.getElementById('cnt');
+ta.addEventListener('input', () => cnt.textContent = ta.value.length);
+document.querySelectorAll('.opts').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => {
+  g.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)); sel[g.dataset.g] = b.dataset.v;
+}));
+document.querySelectorAll('[data-send]').forEach(b => b.onclick = async () => {
+  const t = b.dataset.send;
+  if (!sel[t]) return msg.textContent = '請先選一項';
+  const doc = t === 'policy' ? { choice: sel.policy, reason: ta.value.trim().slice(0, 60) } : { choice: sel.open };
+  b.disabled = true;
+  try {
+    await addDoc(collection(db, `${SLUG}_${t}`), { ...doc, ts: serverTimestamp() });
+    msg.textContent = '已送出，請看投影幕。';
+    if (t === 'policy') { ta.value = ''; cnt.textContent = 0; }
+  } catch (e) { msg.textContent = '送出失敗：' + e.message; }
+  finally { setTimeout(() => b.disabled = false, 1500); }
+});
+</script>
+</body>
+</html>
